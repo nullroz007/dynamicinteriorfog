@@ -1,0 +1,93 @@
+name: NexusUpload
+
+permissions:
+  contents: read
+  actions: read
+
+on:
+  workflow_run:
+    workflows: ["BuildRelease"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to upload (e.g. v1.2.3)'
+        required: true
+      file_description:
+        description: 'Description for the Nexus Mods upload (defaults to latest commit message if blank)'
+        required: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.event.workflow_run.head_sha }}
+
+      - name: Resolve artifact run ID
+        id: run
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+            RUN_ID=$(gh run list --workflow cmake-multi-platform.yml --json databaseId,headBranch,conclusion --limit 20 \
+              | jq -r --arg tag "$TAG" \
+                  '[.[] | select(.headBranch == $tag and .conclusion == "success")] | first | .databaseId')
+            echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+          else
+            echo "run_id=${{ github.event.workflow_run.id }}" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download release zip artifact
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.run.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: '*-*'
+          merge-multiple: true
+
+      - name: Locate release archive
+        id: locate_release
+        run: |
+          ZIP=$(find . -name "*-release.zip" | head -n 1)
+          echo "zip_path=$ZIP" >> $GITHUB_OUTPUT
+
+      - name: Strip version prefix
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            REF="${{ inputs.tag }}"
+          else
+            REF="${{ github.event.workflow_run.head_branch }}"
+          fi
+          VERSION="${REF#v}"
+          echo "number=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Get commit message
+        id: commit
+        run: |
+          if [ -n "${{ inputs.file_description }}" ]; then
+            echo "message=${{ inputs.file_description }}" >> $GITHUB_OUTPUT
+          else
+            MSG=$(git log -1 --pretty=%B)
+            echo "message=$MSG" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload to Nexus Mods
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.2
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_group_id: ${{ secrets.NEXUSMODS_GROUP_ID }}
+          filename: ${{ steps.locate_release.outputs.zip_path }}
+          version: ${{ steps.version.outputs.number }}
+          display_name: DIF-Release-${{ steps.version.outputs.number }}
+          description: ${{ steps.commit.outputs.message }}
+          file_category: main
