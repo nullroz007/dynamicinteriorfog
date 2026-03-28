@@ -43,6 +43,9 @@ add_commonlibsse_plugin(${PROJECT_NAME} SOURCES src/plugin.cpp src/Config.cpp sr
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23) # <--- use C++23 standard
 target_precompile_headers(${PROJECT_NAME} PRIVATE PCH.h) # <--- PCH.h is required!
 
+# Force Unicode everywhere
+target_compile_definitions(${PROJECT_NAME} PRIVATE UNICODE _UNICODE)
+
 target_include_directories(${PROJECT_NAME}
         PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
