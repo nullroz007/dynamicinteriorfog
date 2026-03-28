@@ -57,7 +57,7 @@ namespace NullMod {
     void Config::Initialize(string path) {
         HINSTANCE hModule = GetModuleHandle(nullptr);
         wchar_t dllPath[MAX_PATH];
-        GetModuleFileName(hModule, dllPath, MAX_PATH);
+        GetModuleFileNameW(hModule, dllPath, MAX_PATH);
         filesystem::path configPath = filesystem::path(dllPath).parent_path() / L"Data\\SKSE\\Plugins\\";
         configPath /= path;
 
