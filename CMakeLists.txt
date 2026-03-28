@@ -4,7 +4,7 @@
 
 # It's recommended to set a minimum CMake version.
 # If you use CMake features from higher versions, update this to match.
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.20)
 
 # [BEGIN set_project_name]
 # Set your project name. This will be the name of your SKSE .dll file.
@@ -35,7 +35,11 @@ if(DEFINED ENV{SKYRIM_MODS_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_MODS_FOLDER}")
 endif()
 
 # Otherwise, you can set OUTPUT_FOLDER to any place you'd like :)
-set(OUTPUT_FOLDER "C:/semods/${PROJECT_NAME}")
+# Only set the fallback path if OUTPUT_FOLDER hasn't been set by an environment variable above.
+# This prevents CI from trying to copy to a local path that doesn't exist on the runner.
+if(NOT DEFINED OUTPUT_FOLDER)
+    set(OUTPUT_FOLDER "C:/semods/${PROJECT_NAME}")
+endif()
 
 # Setup your SKSE plugin as an SKSE plugin!
 find_package(CommonLibSSE CONFIG REQUIRED)
@@ -51,7 +55,7 @@ target_include_directories(${PROJECT_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 
 # When your SKSE .dll is compiled, this will automatically copy the .dll into your mods folder.
-# Only works if you configure DEPLOY_ROOT above (or set the SKYRIM_MODS_FOLDER environment variable)
+# Only works if you configure OUTPUT_FOLDER above (or set the SKYRIM_MODS_FOLDER environment variable)
 if(DEFINED OUTPUT_FOLDER)
     # If you specify an <OUTPUT_FOLDER> (including via environment variables)
     # then we'll copy your mod files into Skyrim or a mod manager for you!
@@ -90,31 +94,32 @@ if(DEFINED OUTPUT_FOLDER)
             VERBATIM
         )
     endif()
+endif()
 
-    
-    if(CMAKE_BUILD_TYPE STREQUAL "Release")
-        set(RELEASE_DST "${CMAKE_CURRENT_SOURCE_DIR}/release")
-        set(RELEASE_STATIC_DST "${RELEASE_DST}/SKSE/Plugins/DynamicInteriorFogRemover")
-        set(RELEASE_DLL_DST "${RELEASE_DST}/SKSE/Plugins")
-        set(RELEASE_ZIP "${CMAKE_CURRENT_SOURCE_DIR}/${PROJECT_NAME}-release.zip")
+# Release zip is always produced on Release builds, regardless of OUTPUT_FOLDER.
+# This ensures CI can still create the zip for GitHub releases even without a local mod folder.
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(STATIC_SRC "${CMAKE_CURRENT_SOURCE_DIR}/static")
+    set(RELEASE_DST "${CMAKE_CURRENT_SOURCE_DIR}/release")
+    set(RELEASE_STATIC_DST "${RELEASE_DST}/SKSE/Plugins/${PROJECT_NAME}")
+    set(RELEASE_DLL_DST "${RELEASE_DST}/SKSE/Plugins")
+    set(RELEASE_ZIP "${CMAKE_CURRENT_SOURCE_DIR}/${PROJECT_NAME}-release.zip")
 
-        file(MAKE_DIRECTORY "${RELEASE_DST}")
+    file(MAKE_DIRECTORY "${RELEASE_DST}")
 
-        add_custom_command(
-            TARGET "${PROJECT_NAME}"
-            POST_BUILD
-            COMMAND "${CMAKE_COMMAND}" -E make_directory "${RELEASE_DST}"
-            COMMAND "${CMAKE_COMMAND}" -E make_directory "${RELEASE_STATIC_DST}"
-            COMMAND "${CMAKE_COMMAND}" -E make_directory "${RELEASE_DLL_DST}"
-            COMMAND "${CMAKE_COMMAND}" -E copy_directory "${STATIC_SRC}" "${RELEASE_STATIC_DST}"
-            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "$<TARGET_FILE:${PROJECT_NAME}>"
-                "${RELEASE_DLL_DST}/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
-
-            COMMAND "${CMAKE_COMMAND}" -E rm -f "${RELEASE_ZIP}"
-            COMMAND "${CMAKE_COMMAND}" -E chdir "${RELEASE_DST}"
-                "${CMAKE_COMMAND}" -E tar "cfv" "${RELEASE_ZIP}" --format=zip "."
-            VERBATIM
-        )
-    endif()
+    add_custom_command(
+        TARGET "${PROJECT_NAME}"
+        POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${RELEASE_DST}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${RELEASE_STATIC_DST}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${RELEASE_DLL_DST}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory "${STATIC_SRC}" "${RELEASE_STATIC_DST}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "$<TARGET_FILE:${PROJECT_NAME}>"
+            "${RELEASE_DLL_DST}/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
+        COMMAND "${CMAKE_COMMAND}" -E rm -f "${RELEASE_ZIP}"
+        COMMAND "${CMAKE_COMMAND}" -E chdir "${RELEASE_DST}"
+            "${CMAKE_COMMAND}" -E tar "cfv" "${RELEASE_ZIP}" --format=zip "."
+        VERBATIM
+    )
 endif()
