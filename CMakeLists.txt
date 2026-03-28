@@ -35,8 +35,6 @@ if(DEFINED ENV{SKYRIM_MODS_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_MODS_FOLDER}")
 endif()
 
 # Otherwise, you can set OUTPUT_FOLDER to any place you'd like :)
-# Only set the fallback path if OUTPUT_FOLDER hasn't been set by an environment variable above.
-# This prevents CI from trying to copy to a local path that doesn't exist on the runner.
 if(NOT DEFINED OUTPUT_FOLDER)
     set(OUTPUT_FOLDER "C:/semods/${PROJECT_NAME}")
 endif()
@@ -55,8 +53,8 @@ target_include_directories(${PROJECT_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 
 # When your SKSE .dll is compiled, this will automatically copy the .dll into your mods folder.
-# Only works if you configure OUTPUT_FOLDER above (or set the SKYRIM_MODS_FOLDER environment variable)
-if(DEFINED OUTPUT_FOLDER)
+# Skipped on Release builds so CI doesn't try to copy to a local path that doesn't exist on the runner.
+if(DEFINED OUTPUT_FOLDER AND NOT CMAKE_BUILD_TYPE STREQUAL "Release")
     # If you specify an <OUTPUT_FOLDER> (including via environment variables)
     # then we'll copy your mod files into Skyrim or a mod manager for you!
 
