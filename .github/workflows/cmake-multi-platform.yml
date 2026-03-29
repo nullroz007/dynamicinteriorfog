@@ -42,11 +42,13 @@ jobs:
           name: ${{ github.event.repository.name }}-${{ github.sha }}
           path: ${{ github.workspace }}/*-release.zip
           if-no-files-found: error
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ github.workspace }}/*-release.zip
-     - name: Upload to NexusMods
+
+      - name: Upload to NexusMods
         uses: Nexus-Mods/upload-action@v1
         with:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
