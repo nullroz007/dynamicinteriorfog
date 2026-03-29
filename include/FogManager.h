@@ -1,3 +1,4 @@
+#include <Config.h>
 namespace NullMod {
 struct ShaderAlpha {
   int shaderIndex;
@@ -35,7 +36,7 @@ class FogManager : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>,
 
   void Init();
   bool CellIsTracked(RE::FormID formID);
-
+  void Serialize(json& j);
   RE::BSEventNotifyControl ProcessEvent(
       const RE::TESCellFullyLoadedEvent* event,
       RE::BSTEventSource<RE::TESCellFullyLoadedEvent>*) override;

@@ -42,8 +42,12 @@ void InitLogging() {
 SKSEPluginLoad(const SKSE::LoadInterface* skse) {
   SKSE::Init(skse);
   InitLogging();
+  Config::GetSingleton()->Initialize("DynamicInteriorFog\\config.json");
   FogManager::GetSingleton()->Init();
-  UI::GetSingleton()->Init();
   Hooks::Install();
+
+  if (SKSEMenuFramework::IsInstalled()) {
+    UI::GetSingleton()->Init();
+  }
   return true;
 }

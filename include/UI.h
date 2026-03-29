@@ -8,7 +8,10 @@ class UI {
   }
 
   void Init();
+  static void __stdcall OnEvent(SKSEMenuFramework::Model::EventType);
   static void __stdcall Render_Settings();
   static void __stdcall Render_Debug();
+ private:
+  static SKSEMenuFramework::Model::Event* eventHandler;
 };
 }  // namespace NullMod
