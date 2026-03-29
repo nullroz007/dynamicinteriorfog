@@ -46,3 +46,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ github.workspace }}/*-release.zip
+     - name: Upload to NexusMods
+        uses: Nexus-Mods/upload-action@v1
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_group_id: 0
+          filename: ${{ github.workspace }}/*-release.zip
+          version: ${{ github.ref_name }}
+          file_category: main
