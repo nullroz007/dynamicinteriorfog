@@ -19,28 +19,28 @@ T* LookupForm(RE::FormID formID) {
   auto dataHandler = RE::TESDataHandler::GetSingleton();
   if (!dataHandler) return nullptr;
 
-  uint32_t modIndex = (formID >> 24) & 0xFF;
-  const RE::TESFile* modFile = nullptr;
+  uint8_t modIndex = (formID >> 24) & 0xFF;
+
   if (modIndex == 0xFE) {
-    uint32_t lightIndex = (formID >> 12) & 0xFFF;
-    modFile = dataHandler->LookupLoadedLightModByIndex(lightIndex);
+    uint16_t lightIndex = (formID >> 12) & 0xFFF;
+    auto modFile = dataHandler->LookupLoadedLightModByIndex(lightIndex);
+    if (!modFile) return nullptr;
+    auto localID = formID & 0xFFF;
+    return dataHandler->LookupForm<T>(localID, modFile->fileName);
   } else {
-    modFile = dataHandler->LookupLoadedModByIndex(modIndex);
-  }
-
-  if (modFile) {
-    std::string modName = modFile->fileName;
+    auto modFile = dataHandler->LookupLoadedModByIndex(modIndex);
+    if (!modFile) return nullptr;
     auto localID = formID & 0x00FFFFFF;
-    auto form = dataHandler->LookupForm<T>(localID, modName);
-    return form;
+    return dataHandler->LookupForm<T>(localID, modFile->fileName);
   }
-
-  return nullptr;
 }
 
 void FogManager::Serialize(json& j) {
   j = nlohmann::json{
-      {"fallbackAlpha", fallbackAlpha}, {"visibleDistance", visibleDistance}, {"invisibleDistance", invisibleDistance}};
+      {"fallbackAlpha", fallbackAlpha}, 
+      {"visibleDistance", visibleDistance}, 
+      {"invisibleDistance", invisibleDistance}
+  };
 }
 
 bool FogManager::CellIsTracked(RE::FormID cellID) {
@@ -84,6 +84,20 @@ std::vector<ShapeRef> FogManager::GetShadersForRef(RE::TESObjectREFR* ref) {
   }
 
   return results;
+}
+
+void FogManager::SetGeomFlags(RE::TESObjectREFR* ref) {
+  auto container = ref->Get3D();
+  if (!container || ref->Is3DLoaded()) return;
+  if (auto nodes = container->AsNode()) {
+    for (auto child : nodes->GetChildren()) {
+      if (!child) continue;
+      if(auto geom = child->AsGeometry()){
+        geom->GetFlags().set(RE::NiAVObject::Flag::kForceUpdate);
+        geom->GetFlags().set(RE::NiAVObject::Flag::kAlwaysDraw);
+      }
+    }
+  }
 }
 
 void FogManager::TrackRef(RE::TESObjectREFR* ref) {
@@ -130,7 +144,7 @@ RE::BSEventNotifyControl FogManager::ProcessEvent(const RE::BGSActorCellEvent* e
                                                   RE::BSTEventSource<RE::BGSActorCellEvent>*) {
   auto player = RE::PlayerCharacter::GetSingleton();
   if (event->actor != player->GetHandle()) return RE::BSEventNotifyControl::kContinue;
-
+  
   if (event->flags == RE::BGSActorCellEvent::CellFlag::kLeave) {
     CleanupRefs();
   } else if (event->flags == RE::BGSActorCellEvent::CellFlag::kEnter) {
