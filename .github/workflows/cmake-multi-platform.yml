@@ -47,14 +47,18 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ github.workspace }}/*-release.zip
-      - name: Find zip
-        run: Get-ChildItem -Recurse -Filter "*-release.zip" | Select FullName
 
-      - name: Upload to NexusMods
+      - name: Locate Release Archive
+        id: locate_release
+        run: |
+          $zip = (Get-ChildItem -Recurse -Filter "*-release.zip").FullName
+          echo "zip_path=$zip" >> $env:GITHUB_OUTPUT
+
+      - name: Upload to Nexus Mods
         uses: Nexus-Mods/upload-action@v1.0.0-beta.3
         with:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
           file_group_id: ${{ secrets.NEXUSMODS_GROUP_ID }}
-          filename: ${{ github.workspace }}-release.zip
+          filename: ${{ steps.locate_release.outputs.zip_path }}
           version: ${{ github.ref_name }}
           file_category: main
