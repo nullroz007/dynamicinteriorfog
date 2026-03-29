@@ -1,4 +1,4 @@
-#pragma once 
+#pragma once
 
 #include <windows.h>
 #include "nlohmann/json.hpp"
@@ -7,16 +7,27 @@
 using json = nlohmann::json;
 using namespace std;
 namespace NullMod {
-    class Config {
-    public:
-        template <typename T>
-        static T get(const std::string& name, const T& fallbackValue = T{});
-        
-        template <typename T>
-        static T getFrom(const std::string& from, const std::string& name, const T& fallbackValue = T{});
-        static void Initialize(std::string path);
-        static bool IsInitialized();
-    private:
-        static json j;
-    };
-}
+class Config {
+ public:
+  static Config* GetSingleton() {
+    static Config c;
+    return &c;
+  }
+
+  template <typename T>
+  static T get(const std::string& name, const T& fallbackValue = T{});
+
+  template <typename T>
+  static T getFrom(const std::string& from, const std::string& name,
+                   const T& fallbackValue = T{});
+  static void Initialize(std::string path);
+  static bool IsInitialized();
+  static bool SaveConfig();
+  static json& GetConfig();
+
+ private:
+  static filesystem::path _configPath;
+  static json j;
+};
+
+}  // namespace NullMod
