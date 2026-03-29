@@ -49,7 +49,7 @@ jobs:
           files: ${{ github.workspace }}/*-release.zip
 
       - name: Upload to NexusMods
-        uses: Nexus-Mods/upload-action@v1
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.3
         with:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
           file_group_id: 0
