@@ -24,7 +24,6 @@ class FogManager : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>,
   std::vector<FogReference> trackedRefs;
   std::mutex trackedRefLock;
 
-  int frameCount = 0;
   float fallbackAlpha = 0.56f;
   float invisibleDistance = 200.f;
   float visibleDistance = 400.f;
@@ -55,5 +54,6 @@ class FogManager : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>,
   void CleanupRefs();
   void ProcessCell(RE::TESObjectCELL* cell);
   std::vector<ShapeRef> GetShadersForRef(RE::TESObjectREFR* ref);
+  void SetGeomFlags(RE::TESObjectREFR* ref);
 };
 }  // namespace NullMod

@@ -18,7 +18,6 @@ void Hooks::OnUpdate() {
   FogManager* fogManager = FogManager::GetSingleton();
   std::lock_guard<std::mutex> lock(fogManager->trackedRefLock);
   if (fogManager->trackedRefs.empty()) return;
-  fogManager->frameCount = 0;
 
   auto player = RE::PlayerCharacter::GetSingleton();
   if (!player) return;
@@ -38,27 +37,30 @@ void Hooks::OnUpdate() {
         0.0f, 1.0f);
 
     auto applyFade = [&](RE::BSGeometry* geom, ShapeRef& shapeRef) {
-      geom->GetFlags().set(RE::NiAVObject::Flag::kForceUpdate);
-      geom->GetFlags().set(RE::NiAVObject::Flag::kAlwaysDraw);
       auto& runtimeData = geom->GetGeometryRuntimeData();
+      bool needsUpdate = false;
       for (auto& shader : shapeRef) {
         auto prop = runtimeData.properties[shader.shaderIndex].get();
         if (auto effectShader =
                 netimmerse_cast<RE::BSEffectShaderProperty*>(prop)) {
           float maxAlpha = shader.alpha;
-          float targetAlpha = fadePercent * maxAlpha; 
+          float targetAlpha = fadePercent * maxAlpha;
+          if (std::abs(effectShader->QMaterialAlpha() - targetAlpha) > 0.01f) {
+            effectShader->flags.set(
+                RE::BSEffectShaderProperty::EShaderPropertyFlag::kVertexAlpha);
 
-          effectShader->flags.set(
-              RE::BSEffectShaderProperty::EShaderPropertyFlag::kVertexAlpha);
-          
-          effectShader->SetMaterialAlpha(targetAlpha);
-          effectShader->alpha = targetAlpha;
+            effectShader->SetMaterialAlpha(targetAlpha);
+            effectShader->alpha = targetAlpha;
+            needsUpdate = true;
+          }
         }
       }
 
-      RE::NiUpdateData ctx;
-      geom->SetMaterialNeedsUpdate(true);
-      geom->Update(ctx);
+      if (needsUpdate) {
+          RE::NiUpdateData ctx;
+          geom->SetMaterialNeedsUpdate(true);
+          geom->Update(ctx);
+      }
     };
 
     if (auto nodes = container->AsNode()) {
@@ -67,7 +69,7 @@ void Hooks::OnUpdate() {
         if (!child) continue;
         if (shapeIndex >= fogRef.shapes.size()) break;
         auto triShape = child->AsTriShape();
-        
+
         if (triShape) {
           applyFade(triShape, fogRef.shapes[shapeIndex]);
           shapeIndex++;

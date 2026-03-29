@@ -15,14 +15,10 @@ SKSEMenuFramework::Model::Event* UI::eventHandler = nullptr;
 void UI::OnEvent(EventType eventType) {
   switch (eventType) {
     case EventType::kCloseMenu:
-      log::info("Saving config...");
       auto configManager = Config::GetSingleton();
       auto& config = configManager->GetConfig();
       FogManager::GetSingleton()->Serialize(config);
-      if (configManager->SaveConfig())
-        log::info("Done.");
-      else
-        log::warn("Failed to save config. Changes will not be reflected.");
+      if (!configManager->SaveConfig()) log::warn("Failed to save config. Changes will not be reflected.");
       break;
   }
 }
