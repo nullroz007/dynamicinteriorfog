@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 # [BEGIN set_project_name]
-project(DynamicInteriorFog VERSION 0.0.1 LANGUAGES CXX)
+project(DynamicInteriorFog VERSION 0.0.3 LANGUAGES CXX)
 # [END set_project_name]
 
 find_package(CommonLibSSE CONFIG REQUIRED)
