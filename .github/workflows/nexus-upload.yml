@@ -5,10 +5,6 @@ permissions:
   actions: read
 
 on:
-  workflow_run:
-    workflows: ["BuildRelease"]
-    types:
-      - completed
   workflow_dispatch:
     inputs:
       tag:
@@ -54,11 +50,13 @@ jobs:
           pattern: '*-*'
           merge-multiple: true
 
-      - name: Locate release archive
+      - name: Locate and rename release archive
         id: locate_release
         run: |
-          ZIP=$(find . -name "*-release.zip" | head -n 1)
-          echo "zip_path=$ZIP" >> $GITHUB_OUTPUT
+          ZIP=$(find "$GITHUB_WORKSPACE" -name "*-release.zip" | head -n 1)
+          DEST="$GITHUB_WORKSPACE/DynamicInteriorFog-${{ steps.version.outputs.number }}.zip"
+          mv "$ZIP" "$DEST"
+          echo "zip_path=$DEST" >> $GITHUB_OUTPUT
 
       - name: Strip version prefix
         id: version
@@ -82,7 +80,7 @@ jobs:
           fi
 
       - name: Upload to Nexus Mods
-        uses: Nexus-Mods/upload-action@v1.0.0-beta.2
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.3
         with:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
           file_group_id: ${{ secrets.NEXUSMODS_GROUP_ID }}
