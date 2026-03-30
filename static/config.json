@@ -1,1 +1,6 @@
-{"fallbackAlpha":0.36,"invisibleDistance":200.0,"visibleDistance":400.0}
+{
+  "minimumAlpha":  0.0,
+  "fallbackAlpha": 0.4,
+  "invisibleDistance": 200.0,
+  "visibleDistance": 400.0
+}

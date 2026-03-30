@@ -1,21 +1,16 @@
 name: BuildRelease
-
 permissions:
   contents: write
-
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: windows-latest
-
     env:
       BUILD_TYPE: Release
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -54,11 +49,25 @@ jobs:
           $zip = (Get-ChildItem -Recurse -Filter "*-release.zip").FullName
           echo "zip_path=$zip" >> $env:GITHUB_OUTPUT
 
+      - name: Strip version prefix
+        id: version
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          echo "number=$version" >> $env:GITHUB_OUTPUT
+      
+      - name: Get commit message
+        id: commit
+        run: |
+          $msg = git log -1 --pretty=%B
+          echo "message=$msg" >> $env:GITHUB_OUTPUT
+
       - name: Upload to Nexus Mods
         uses: Nexus-Mods/upload-action@v1.0.0-beta.3
         with:
           api_key: ${{ secrets.NEXUSMODS_API_KEY }}
           file_group_id: ${{ secrets.NEXUSMODS_GROUP_ID }}
           filename: ${{ steps.locate_release.outputs.zip_path }}
-          version: ${{ github.ref_name }}
+          version: ${{ steps.version.outputs.number }}
+          display_name: DIF-Release-${{ steps.version.outputs.number }}
+          description: ${{ steps.commit.outputs.message }}
           file_category: main
