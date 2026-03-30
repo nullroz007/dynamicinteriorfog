@@ -37,6 +37,7 @@ T* LookupForm(RE::FormID formID) {
 
 void FogManager::Serialize(json& j) {
   j = nlohmann::json{
+      {"minimumAlpha", minAlpha},
       {"fallbackAlpha", fallbackAlpha}, 
       {"visibleDistance", visibleDistance}, 
       {"invisibleDistance", invisibleDistance}
@@ -44,6 +45,7 @@ void FogManager::Serialize(json& j) {
 }
 
 bool FogManager::CellIsTracked(RE::FormID cellID) {
+  std::lock_guard<std::mutex> lock(trackedRefsLock);
   for (auto fogRef : trackedRefs) {
     auto ref = fogRef.handle.get();
     if (!ref) return false;
@@ -68,6 +70,7 @@ std::vector<ShapeRef> FogManager::GetShadersForRef(RE::TESObjectREFR* ref) {
   for (auto child : rootNode->GetChildren()) {
     auto triShape = child ? child->AsTriShape() : nullptr;
     if (!triShape) continue;
+
     ShapeRef shapeRef;
     auto& runtimeData = triShape->GetGeometryRuntimeData();
     for (int i = 0; i < RE::BSGeometry::States::kTotal; i++) {
@@ -76,6 +79,8 @@ std::vector<ShapeRef> FogManager::GetShadersForRef(RE::TESObjectREFR* ref) {
       if (effectShader) {
         auto matAlpha = effectShader->QMaterialAlpha();
         if (matAlpha >= 1.0) matAlpha = fallbackAlpha;
+        matAlpha = std::max(matAlpha, minAlpha);
+        log::info("Creating ShaderData: i={:d} matAlpha={:1.2f}, minAlpha={:1.2f}", i, matAlpha, minAlpha);
         shapeRef.push_back({i, matAlpha});
       }
     }
@@ -101,12 +106,13 @@ void FogManager::SetGeomFlags(RE::TESObjectREFR* ref) {
 }
 
 void FogManager::TrackRef(RE::TESObjectREFR* ref) {
+  std::lock_guard<std::mutex> lock(trackedRefsLock);
   auto alphaList = GetShadersForRef(ref);
   trackedRefs.push_back({ref->GetHandle(), alphaList});
 }
 
 void FogManager::CleanupRefs() {
-  std::lock_guard<std::mutex> lock(trackedRefLock);
+  std::lock_guard<std::mutex> lock(trackedRefsLock);
   for (auto [handle, alphaMap] : trackedRefs) {
     alphaMap.clear();
 
@@ -124,6 +130,7 @@ void FogManager::CleanupRefs() {
 }
 
 void FogManager::ProcessCell(RE::TESObjectCELL* cell) {
+  CleanupRefs();
   cell->ForEachReference([&](RE::TESObjectREFR& ref) -> RE::BSContainer::ForEachResult {
     auto baseObject = ref.GetBaseObject();
     if (!baseObject) return RE::BSContainer::ForEachResult::kContinue;
@@ -149,7 +156,7 @@ RE::BSEventNotifyControl FogManager::ProcessEvent(const RE::BGSActorCellEvent* e
     CleanupRefs();
   } else if (event->flags == RE::BGSActorCellEvent::CellFlag::kEnter) {
     auto cell = LookupForm<RE::TESObjectCELL>(event->cellID);
-    if (cell && !CellIsTracked(cell->formID)) ProcessCell(cell);
+    if (cell) ProcessCell(cell);
   }
 
   return RE::BSEventNotifyControl::kContinue;
@@ -173,9 +180,11 @@ RE::BSEventNotifyControl FogManager::ProcessEvent(const RE::TESCellFullyLoadedEv
 
 void FogManager::Init() {
   auto configManager = Config::GetSingleton();
+  minAlpha = configManager->get<float>("minimumAlpha", 0.0);
   fallbackAlpha = configManager->get<float>("fallbackAlpha", 0.36);
   invisibleDistance = configManager->get<float>("invisibleDistance", 200.f);
   visibleDistance = configManager->get<float>("visibleDistance", 400.f);
+  
   log::info("Initialised Config");
 
   auto scriptEventHolder = RE::ScriptEventSourceHolder::GetSingleton();

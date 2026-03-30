@@ -1,12 +1,13 @@
+#pragma once
 #include <Config.h>
 namespace NullMod {
-struct ShaderAlpha {
+struct ShaderData {
   int shaderIndex;
   float alpha;
 };
 
-using ShapeRef = std::vector<ShaderAlpha>;
-struct FogReference {
+using ShapeRef = std::vector<ShaderData>;
+struct FogRef {
   RE::ObjectRefHandle handle;
   std::vector<ShapeRef> shapes;
 };
@@ -21,12 +22,14 @@ class FogManager : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>,
   FogManager& operator=(const FogManager&&) = delete;
 
  public:
-  std::vector<FogReference> trackedRefs;
-  std::mutex trackedRefLock;
-
-  float fallbackAlpha = 0.56f;
-  float invisibleDistance = 200.f;
-  float visibleDistance = 400.f;
+  std::vector<FogRef> trackedRefs;
+  std::mutex trackedRefsLock;
+  
+  float minAlpha;
+  float fallbackAlpha;
+  float invisibleDistance;
+  float visibleDistance;
+  RE::NiColor tint;
 
   static FogManager* GetSingleton() {
     static FogManager events;
@@ -36,6 +39,9 @@ class FogManager : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>,
   void Init();
   bool CellIsTracked(RE::FormID formID);
   void Serialize(json& j);
+  void CleanupRefs();
+  void ProcessCell(RE::TESObjectCELL* cell);
+
   RE::BSEventNotifyControl ProcessEvent(
       const RE::TESCellFullyLoadedEvent* event,
       RE::BSTEventSource<RE::TESCellFullyLoadedEvent>*) override;
@@ -51,8 +57,7 @@ class FogManager : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>,
  private:
   // Main functions
   void TrackRef(RE::TESObjectREFR* ref);
-  void CleanupRefs();
-  void ProcessCell(RE::TESObjectCELL* cell);
+
   std::vector<ShapeRef> GetShadersForRef(RE::TESObjectREFR* ref);
   void SetGeomFlags(RE::TESObjectREFR* ref);
 };

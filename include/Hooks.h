@@ -1,3 +1,4 @@
+#pragma once
 namespace NullMod {
 class Hooks {
  public:
@@ -6,7 +7,5 @@ class Hooks {
  private:
   static void OnUpdate();
   static inline REL::Relocation<decltype(OnUpdate)> _OnUpdate;
-
-
 };
 }  // namespace NullMod
