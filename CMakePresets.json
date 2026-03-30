@@ -37,10 +37,12 @@
   "buildPresets": [
     {
       "name": "debug",
+      "displayName": "Debug",
       "configurePreset": "debug"
     },
     {
       "name": "release",
+      "displayName":  "Release",
       "configurePreset": "release"
     }
   ]
