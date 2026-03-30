@@ -1,20 +1,16 @@
 name: BuildRelease
-
 permissions:
   contents: write
-
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
-
 jobs:
   build:
-    runs-on: windows-2025-vs2026
+    runs-on: windows-latest
     env:
       BUILD_TYPE: Release
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,16 +20,16 @@ jobs:
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
 
-      - name: Setup VS Developer Environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
       - name: Configure CMake
-        run: cmake --preset release
+        run: |
+          cmake -B build `
+            -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} `
+            -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
 
       - name: Build
-        run: cmake --build --preset release
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
 
       - name: Upload release zip
         uses: actions/upload-artifact@v4
@@ -46,3 +42,32 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ github.workspace }}/*-release.zip
+
+      - name: Locate Release Archive
+        id: locate_release
+        run: |
+          $zip = (Get-ChildItem -Recurse -Filter "*-release.zip").FullName
+          echo "zip_path=$zip" >> $env:GITHUB_OUTPUT
+
+      - name: Strip version prefix
+        id: version
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          echo "number=$version" >> $env:GITHUB_OUTPUT
+      
+      - name: Get commit message
+        id: commit
+        run: |
+          $msg = git log -1 --pretty=%B
+          echo "message=$msg" >> $env:GITHUB_OUTPUT
+
+      - name: Upload to Nexus Mods
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.3
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_group_id: ${{ secrets.NEXUSMODS_GROUP_ID }}
+          filename: ${{ steps.locate_release.outputs.zip_path }}
+          version: ${{ steps.version.outputs.number }}
+          display_name: DIF-Release-${{ steps.version.outputs.number }}
+          description: ${{ steps.commit.outputs.message }}
+          file_category: main

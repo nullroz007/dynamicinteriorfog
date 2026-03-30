@@ -67,7 +67,6 @@ bool Config::SaveConfig() {
   if (!IsInitialized()) return false;
 
   string jString = j.dump();
-  log::info("JSON = {}", jString);
   std::ofstream output(_configPath);
   if (output.is_open()) {
     try {

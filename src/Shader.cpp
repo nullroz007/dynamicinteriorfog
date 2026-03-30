@@ -13,7 +13,7 @@ bool Shader::applyFade(RE::BSEffectShaderProperty* effectShader,
     return true;
   }
 
-  return false; 
+  return false;
 }
 
 bool Shader::applyTint(RE::BSEffectShaderProperty* effectShader,

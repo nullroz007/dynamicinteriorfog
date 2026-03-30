@@ -16,31 +16,50 @@ void UI::OnEvent(EventType eventType) {
   switch (eventType) {
     case EventType::kCloseMenu:
       auto configManager = Config::GetSingleton();
+      auto fogManager = FogManager::GetSingleton();
+
       auto& config = configManager->GetConfig();
-      FogManager::GetSingleton()->Serialize(config);
-      if (!configManager->SaveConfig()) log::warn("Failed to save config. Changes will not be reflected.");
+      fogManager->Serialize(config);
+
+      if (!configManager->SaveConfig())
+        log::warn("Failed to save config. Changes will not be reflected.");
       break;
   }
 }
 
 void UI::Render_Settings() {
+  auto fogManager = FogManager::GetSingleton();
+
+  ImGui::SliderFloat("Minimum Alpha", &fogManager->minAlpha, 0.0f, 1.0f);
+  ImGui::TextColored(ImGui::ImVec4(1, 1, 0, 0.5f),
+                     "Must be smaller than the fallback alpha value.");
+
+  ImGui::SliderFloat("Fallback Alpha", &fogManager->fallbackAlpha, 0.0f, 1.0f);
   ImGui::TextColored(ImGui::ImVec4(1, 1, 1, 0.5f),
-                     "Maximum alpha value used when it can not be determined:");
-  ImGui::SliderFloat("Fallback Alpha",
-                     &FogManager::GetSingleton()->fallbackAlpha, 0.0f, 1.0f);
+                     "The maximum alpha value used when it can not be "
+                     "automatically determined.");
+
+  ImGui::SliderFloat("Invisible Distance", &fogManager->invisibleDistance, 20,
+                     200);
   ImGui::TextColored(ImGui::ImVec4(1, 1, 1, 0.5f),
-                     "Distance at which fog will be fully transparent:");
-  ImGui::SliderFloat("Invisible Distance",
-                     &FogManager::GetSingleton()->invisibleDistance, 20, 200);
+                     "Distance at which fog will be fully transparent.");
+
+  ImGui::SliderFloat("Visible Distance", &fogManager->visibleDistance, 100,
+                     800);
   ImGui::TextColored(ImGui::ImVec4(1, 1, 1, 0.5f),
-                     "Distance at which fog will be it's original opacity");
-  ImGui::SliderFloat("Visible Distance",
-                     &FogManager::GetSingleton()->visibleDistance, 100, 800);
+                     "Distance at which fog will be it's maximum opacity.");
+  fogManager->minAlpha =
+      std::min(fogManager->minAlpha, fogManager->fallbackAlpha);
+
+  fogManager->invisibleDistance = std::min(fogManager->invisibleDistance,
+                                           fogManager->visibleDistance - 1.0f);
 }
 
 void UI::Render_Debug() {
+  auto fogManager = FogManager::GetSingleton();
+  std::lock_guard<std::mutex> lock(fogManager->trackedRefsLock);
   ImGui::Text("Tracked Refs");
-  for (auto fogRef : FogManager::GetSingleton()->trackedRefs) {
+  for (auto fogRef : fogManager->trackedRefs) {
     auto handle = fogRef.handle;
     auto ref = handle.get();
     if (!ref) continue;
@@ -49,8 +68,8 @@ void UI::Render_Debug() {
       const auto& shape = fogRef.shapes[i];
       for (auto& shader : shape) {
         ImGui::TextColored(ImGui::ImVec4(1, 1, 1, 0.5f),
-                           "shape %d, shader %d :%.2f", i, shader.shaderIndex,
-                           shader.alpha);
+                           "shape %d, shader %d original alpha:%.2f", i,
+                           shader.shaderIndex, shader.alpha);
       }
     }
   }

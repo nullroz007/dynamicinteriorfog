@@ -1,5 +1,6 @@
 #include <Hooks.h>
 #include <FogManager.h>
+#include <Shader.h>
 using namespace SKSE;
 
 namespace NullMod {
@@ -16,67 +17,14 @@ void Hooks::OnUpdate() {
   _OnUpdate();
 
   FogManager* fogManager = FogManager::GetSingleton();
-  std::lock_guard<std::mutex> lock(fogManager->trackedRefLock);
-  if (fogManager->trackedRefs.empty()) return;
-
+  std::lock_guard<std::mutex> lock(fogManager->trackedRefsLock);
   auto player = RE::PlayerCharacter::GetSingleton();
-  if (!player) return;
+  if (fogManager->trackedRefs.empty() || !player) return;
 
   for (auto& fogRef : fogManager->trackedRefs) {
     auto ref = fogRef.handle.get();
     if (!ref || !ref->Is3DLoaded()) continue;
-
-    auto container = ref->Get3D();
-    auto posFog = ref->GetPosition();
-    auto posPlayer = player->GetPosition();
-    auto dist = posPlayer.GetDistance(posFog);
-
-    float fadePercent = std::clamp(
-        (dist - fogManager->invisibleDistance) /
-            (fogManager->visibleDistance - fogManager->invisibleDistance),
-        0.0f, 1.0f);
-
-    auto applyFade = [&](RE::BSGeometry* geom, ShapeRef& shapeRef) {
-      auto& runtimeData = geom->GetGeometryRuntimeData();
-      bool needsUpdate = false;
-      for (auto& shader : shapeRef) {
-        auto prop = runtimeData.properties[shader.shaderIndex].get();
-        if (auto effectShader =
-                netimmerse_cast<RE::BSEffectShaderProperty*>(prop)) {
-          float maxAlpha = shader.alpha;
-          float targetAlpha = fadePercent * maxAlpha;
-          if (std::abs(effectShader->QMaterialAlpha() - targetAlpha) > 0.01f) {
-            effectShader->flags.set(
-                RE::BSEffectShaderProperty::EShaderPropertyFlag::kVertexAlpha);
-
-            effectShader->SetMaterialAlpha(targetAlpha);
-            effectShader->alpha = targetAlpha;
-            needsUpdate = true;
-          }
-        }
-      }
-
-      if (needsUpdate) {
-          RE::NiUpdateData ctx;
-          geom->SetMaterialNeedsUpdate(true);
-          geom->Update(ctx);
-      }
-    };
-
-    if (auto nodes = container->AsNode()) {
-      int shapeIndex = 0;
-      for (auto child : nodes->GetChildren()) {
-        if (!child) continue;
-        if (shapeIndex >= fogRef.shapes.size()) break;
-        auto triShape = child->AsTriShape();
-
-        if (triShape) {
-          applyFade(triShape, fogRef.shapes[shapeIndex]);
-          shapeIndex++;
-        }
-      }
-    }
+    Shader::applyEffects(fogManager, player, fogRef);
   }
 }
-
 }  // namespace NullMod
