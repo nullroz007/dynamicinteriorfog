@@ -5,8 +5,10 @@ namespace NullMod {
 bool Shader::applyFade(RE::BSEffectShaderProperty* effectShader,
                        float fadePercent, float maxAlpha, float minAlpha) {
   minAlpha = std::min(minAlpha, maxAlpha);
+  float currentAlpha = effectShader->QMaterialAlpha();
   float targetAlpha = std::clamp(fadePercent * maxAlpha, minAlpha, maxAlpha);
-  if (std::abs(effectShader->QMaterialAlpha() - targetAlpha) > 0.01f) {
+
+  if (std::abs(currentAlpha - targetAlpha) > 0.01f) {
     effectShader->flags.set(
         RE::BSEffectShaderProperty::EShaderPropertyFlag::kVertexAlpha);
     effectShader->SetMaterialAlpha(targetAlpha);
@@ -20,9 +22,9 @@ bool Shader::applyTint(RE::BSEffectShaderProperty* effectShader,
                        RE::NiColor tint) {
   if (!effectShader->unk88) return false;
   RE::NiColor* currentColor = effectShader->unk88;
-  if (std::abs(currentColor->red - tint.red) < 0.01f &&
-      std::abs(currentColor->blue - tint.blue) < 0.01f &&
-      std::abs(currentColor->green - tint.green) < 0.01f)
+  if (std::abs(currentColor->red - tint.red) < 0.1f &&
+      std::abs(currentColor->blue - tint.blue) < 0.1f &&
+      std::abs(currentColor->green - tint.green) < 0.1f)
     return false;
 
   currentColor->red = tint.red;
@@ -79,8 +81,6 @@ void Shader::applyEffects(FogManager* fogManager, RE::PlayerCharacter* player,
           bool effectApplied = false;
           effectApplied |= Shader::applyFade(
               effectShader, fadePercent, shader.alpha, fogManager->minAlpha);
-          /* Ignoring for now, causing some flickering
-          effectApplied |= Shader::applyTint(effectShader, fogManager->tint);*/
           return effectApplied;
         });
 

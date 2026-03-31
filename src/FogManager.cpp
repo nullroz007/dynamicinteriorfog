@@ -1,5 +1,7 @@
 #include <FogManager.h>
 #include <Offsets.h>
+#include <Shader.h>
+
 using namespace SKSE;
 namespace NullMod {
 bool isFog(RE::TESBoundObject* baseObject) {
@@ -12,27 +14,6 @@ bool isFog(RE::TESBoundObject* baseObject) {
   if (!modelPath) return false;
 
   return std::regex_search(modelPath, regexpr);
-}
-
-template <class T>
-T* LookupForm(RE::FormID formID) {
-  auto dataHandler = RE::TESDataHandler::GetSingleton();
-  if (!dataHandler) return nullptr;
-
-  uint8_t modIndex = (formID >> 24) & 0xFF;
-
-  if (modIndex == 0xFE) {
-    uint16_t lightIndex = (formID >> 12) & 0xFFF;
-    auto modFile = dataHandler->LookupLoadedLightModByIndex(lightIndex);
-    if (!modFile) return nullptr;
-    auto localID = formID & 0xFFF;
-    return dataHandler->LookupForm<T>(localID, modFile->fileName);
-  } else {
-    auto modFile = dataHandler->LookupLoadedModByIndex(modIndex);
-    if (!modFile) return nullptr;
-    auto localID = formID & 0x00FFFFFF;
-    return dataHandler->LookupForm<T>(localID, modFile->fileName);
-  }
 }
 
 void FogManager::Serialize(json& j) {
@@ -60,13 +41,7 @@ std::vector<ShapeRef> FogManager::GetShadersForRef(RE::TESObjectREFR* ref) {
   auto container = ref ? ref->Get3D() : nullptr;
   auto rootNode = container ? container->AsNode() : nullptr;
 
-  if (!rootNode) {
-    ShapeRef fallback;
-    fallback.push_back({1, fallbackAlpha});
-    results.push_back(fallback);
-    return results;
-  }
-
+  if (!rootNode) return results;
   for (auto child : rootNode->GetChildren()) {
     auto triShape = child ? child->AsTriShape() : nullptr;
     if (!triShape) continue;
@@ -85,37 +60,40 @@ std::vector<ShapeRef> FogManager::GetShadersForRef(RE::TESObjectREFR* ref) {
       }
     }
 
-    results.push_back(shapeRef);
+    results.push_back(std::move(shapeRef));
   }
 
   return results;
 }
 
-void FogManager::SetGeomFlags(RE::TESObjectREFR* ref) {
-  auto container = ref->Get3D();
-  if (!container || ref->Is3DLoaded()) return;
-  if (auto nodes = container->AsNode()) {
-    for (auto child : nodes->GetChildren()) {
-      if (!child) continue;
-      if(auto geom = child->AsGeometry()){
-        geom->GetFlags().set(RE::NiAVObject::Flag::kForceUpdate);
-        geom->GetFlags().set(RE::NiAVObject::Flag::kAlwaysDraw);
-      }
-    }
+void FogManager::TrackRefDeferred(RE::TESObjectREFR* ref, int attempts) {
+  if (attempts > 120) {
+    log::warn("Failed to load 3D for {:08X}", ref->formID);
+    return;
   }
-}
 
-void FogManager::TrackRef(RE::TESObjectREFR* ref) {
+  auto shaders = GetShadersForRef(ref);
+  if (shaders.empty()) {
+    SKSE::GetTaskInterface()->AddTask([this, ref, attempts]() { 
+       TrackRefDeferred(ref, attempts + 1);
+    });
+
+    return;
+  }
+
+  auto baseObject = ref->GetBaseObject();
+  auto stat = baseObject->As<RE::TESObjectSTAT>();
+  const char* modelPath = stat->model.c_str();
+  log::info("Tracking: FormID={}, RefID={}, Path={}", baseObject->formID, ref->formID, modelPath);
+
   std::lock_guard<std::mutex> lock(trackedRefsLock);
-  auto alphaList = GetShadersForRef(ref);
-  trackedRefs.push_back({ref->GetHandle(), alphaList});
+  FogRef fogRef = {ref->GetHandle(), shaders};
+  trackedRefs.push_back(fogRef);
 }
 
 void FogManager::CleanupRefs() {
   std::lock_guard<std::mutex> lock(trackedRefsLock);
-  for (auto [handle, alphaMap] : trackedRefs) {
-    alphaMap.clear();
-
+  for (const auto& [handle, shapes] : trackedRefs) {
     auto ref = handle.get();
     if (!ref) continue;
 
@@ -130,6 +108,7 @@ void FogManager::CleanupRefs() {
 }
 
 void FogManager::ProcessCell(RE::TESObjectCELL* cell) {
+  auto player = RE::PlayerCharacter::GetSingleton();
   CleanupRefs();
   cell->ForEachReference([&](RE::TESObjectREFR& ref) -> RE::BSContainer::ForEachResult {
     auto baseObject = ref.GetBaseObject();
@@ -138,9 +117,7 @@ void FogManager::ProcessCell(RE::TESObjectCELL* cell) {
     if (isFog(baseObject)) {
       auto stat = baseObject->As<RE::TESObjectSTAT>();
       const char* modelPath = stat->model.c_str();
-
-      TrackRef(&ref);
-      log::info("Tracking: FormID={}, RefID={}, Path={}", baseObject->formID, ref.formID, modelPath);
+      TrackRefDeferred(&ref, 0);
     }
 
     return RE::BSContainer::ForEachResult::kContinue;
@@ -155,7 +132,8 @@ RE::BSEventNotifyControl FogManager::ProcessEvent(const RE::BGSActorCellEvent* e
   if (event->flags == RE::BGSActorCellEvent::CellFlag::kLeave) {
     CleanupRefs();
   } else if (event->flags == RE::BGSActorCellEvent::CellFlag::kEnter) {
-    auto cell = LookupForm<RE::TESObjectCELL>(event->cellID);
+    auto cellForm = RE::TESForm::LookupByID(event->cellID);
+    auto cell = cellForm->As<RE::TESObjectCELL>();
     if (cell) ProcessCell(cell);
   }
 
@@ -175,16 +153,23 @@ RE::BSEventNotifyControl FogManager::ProcessEvent(const RE::TESCellFullyLoadedEv
   RE::TESObjectCELL* cell = event->cell;
   if (!cell->IsInteriorCell()) return RE::BSEventNotifyControl::kContinue;
   if (!CellIsTracked(cell->formID)) ProcessCell(cell);
+
   return RE::BSEventNotifyControl::kContinue;
 }
 
 void FogManager::Init() {
   auto configManager = Config::GetSingleton();
+
   minAlpha = configManager->get<float>("minimumAlpha", 0.0);
   fallbackAlpha = configManager->get<float>("fallbackAlpha", 0.36);
   invisibleDistance = configManager->get<float>("invisibleDistance", 200.f);
   visibleDistance = configManager->get<float>("visibleDistance", 400.f);
-  
+
+  useTint = configManager->get<bool>("useTint", false);
+  tint.red = configManager->getFrom<float>("tint", "r", 1.0f);
+  tint.green = configManager->getFrom<float>("tint", "g", 0.0f);
+  tint.blue = configManager->getFrom<float>("tint", "b", 0.0f);
+
   log::info("Initialised Config");
 
   auto scriptEventHolder = RE::ScriptEventSourceHolder::GetSingleton();

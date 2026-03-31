@@ -29,6 +29,7 @@ class FogManager : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>,
   float fallbackAlpha;
   float invisibleDistance;
   float visibleDistance;
+  bool useTint;
   RE::NiColor tint;
 
   static FogManager* GetSingleton() {
@@ -57,8 +58,7 @@ class FogManager : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>,
  private:
   // Main functions
   void TrackRef(RE::TESObjectREFR* ref);
-
+  void TrackRefDeferred(RE::TESObjectREFR* ref, int attempts);
   std::vector<ShapeRef> GetShadersForRef(RE::TESObjectREFR* ref);
-  void SetGeomFlags(RE::TESObjectREFR* ref);
 };
 }  // namespace NullMod
