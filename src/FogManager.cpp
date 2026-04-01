@@ -56,7 +56,8 @@ std::vector<ShapeRef> FogManager::GetShadersForRef(RE::TESObjectREFR* ref) {
         if (matAlpha >= 1.0) matAlpha = fallbackAlpha;
         matAlpha = std::max(matAlpha, minAlpha);
         log::info("Creating ShaderData: i={:d} matAlpha={:1.2f}, minAlpha={:1.2f}", i, matAlpha, minAlpha);
-        shapeRef.push_back({i, matAlpha});
+        ShaderData shaderData{i, matAlpha, false};
+        shapeRef.push_back(std::move(shaderData));
       }
     }
 
@@ -80,6 +81,7 @@ void FogManager::TrackRefDeferred(RE::TESObjectREFR* ref, int attempts) {
 
     return;
   }
+
 
   auto baseObject = ref->GetBaseObject();
   auto stat = baseObject->As<RE::TESObjectSTAT>();
@@ -164,11 +166,6 @@ void FogManager::Init() {
   fallbackAlpha = configManager->get<float>("fallbackAlpha", 0.36);
   invisibleDistance = configManager->get<float>("invisibleDistance", 200.f);
   visibleDistance = configManager->get<float>("visibleDistance", 400.f);
-
-  useTint = configManager->get<bool>("useTint", false);
-  tint.red = configManager->getFrom<float>("tint", "r", 1.0f);
-  tint.green = configManager->getFrom<float>("tint", "g", 0.0f);
-  tint.blue = configManager->getFrom<float>("tint", "b", 0.0f);
 
   log::info("Initialised Config");
 

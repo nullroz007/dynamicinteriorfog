@@ -4,6 +4,7 @@ namespace NullMod {
 struct ShaderData {
   int shaderIndex;
   float alpha;
+  bool tintApplied;
 };
 
 using ShapeRef = std::vector<ShaderData>;

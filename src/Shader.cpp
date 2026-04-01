@@ -18,22 +18,6 @@ bool Shader::applyFade(RE::BSEffectShaderProperty* effectShader,
   return false;
 }
 
-bool Shader::applyTint(RE::BSEffectShaderProperty* effectShader,
-                       RE::NiColor tint) {
-  if (!effectShader->unk88) return false;
-  RE::NiColor* currentColor = effectShader->unk88;
-  if (std::abs(currentColor->red - tint.red) < 0.1f &&
-      std::abs(currentColor->blue - tint.blue) < 0.1f &&
-      std::abs(currentColor->green - tint.green) < 0.1f)
-    return false;
-
-  currentColor->red = tint.red;
-  currentColor->green = tint.green;
-  currentColor->blue = tint.blue;
-
-  return true;
-}
-
 bool Shader::applyEffect(
     RE::BSGeometry* geom, const ShapeRef& shapeRef,
     std::function<bool(RE::BSEffectShaderProperty*, const ShaderData&)>
@@ -41,10 +25,11 @@ bool Shader::applyEffect(
   auto& runtimeData = geom->GetGeometryRuntimeData();
 
   bool needsUpdate = false;
-  for (auto& shader : shapeRef) {
+  for (const auto& shader : shapeRef) {
     auto prop = runtimeData.properties[shader.shaderIndex].get();
-    if (auto effectShader = netimmerse_cast<RE::BSEffectShaderProperty*>(prop))
+    if (const auto& effectShader = netimmerse_cast<RE::BSEffectShaderProperty*>(prop)) {
       needsUpdate |= effectFunc(effectShader, shader);
+    }
   }
 
   return needsUpdate;
@@ -59,6 +44,7 @@ void Shader::applyEffects(FogManager* fogManager, RE::PlayerCharacter* player,
   auto posFog = ref->GetPosition();
   auto posPlayer = player->GetPosition();
   auto dist = posPlayer.GetDistance(posFog);
+  auto time = RE::Calendar::GetSingleton()->GetCurrentGameTime();
 
   float fadePercent = std::clamp(
       (dist - fogManager->invisibleDistance) /
@@ -74,23 +60,20 @@ void Shader::applyEffects(FogManager* fogManager, RE::PlayerCharacter* player,
       auto triShape = child->AsTriShape();
 
       if (triShape) {
-        bool needsUpdate = false;
-        needsUpdate |= Shader::applyEffect(
-            triShape, fogRef.shapes[shapeIndex],
-            [&](auto effectShader, const ShaderData& shader) {
-          bool effectApplied = false;
-          effectApplied |= Shader::applyFade(
-              effectShader, fadePercent, shader.alpha, fogManager->minAlpha);
-          return effectApplied;
-        });
-
-        shapeIndex++;
-
-        if (needsUpdate) {
+        if (Shader::applyEffect(
+                triShape, fogRef.shapes[shapeIndex],
+                [&](auto effectShader, const ShaderData& shader) {
+          bool effectsApplied = false;
+          effectsApplied |= Shader::applyFade(effectShader, fadePercent, shader.alpha,
+                                   fogManager->minAlpha);
+          return effectsApplied;
+        })) {
           RE::NiUpdateData ctx;
           triShape->SetMaterialNeedsUpdate(true);
           triShape->Update(ctx);
         }
+
+        shapeIndex++;
       }
     }
   }
