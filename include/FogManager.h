@@ -4,14 +4,15 @@ namespace NullMod {
 struct ShaderData {
   int shaderIndex;
   float alpha;
-  bool tintApplied;
 };
 
 using ShapeRef = std::vector<ShaderData>;
 struct FogRef {
   RE::ObjectRefHandle handle;
   std::vector<ShapeRef> shapes;
+  bool rayHit;
 };
+
 
 class FogManager : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>,
                    public RE::BSTEventSink<RE::TESLoadGameEvent>,
@@ -28,10 +29,8 @@ class FogManager : public RE::BSTEventSink<RE::TESCellFullyLoadedEvent>,
   
   float minAlpha;
   float fallbackAlpha;
-  float invisibleDistance;
-  float visibleDistance;
-  bool useTint;
-  RE::NiColor tint;
+  float fadeDistance;
+  float lerpFactor;
 
   static FogManager* GetSingleton() {
     static FogManager events;

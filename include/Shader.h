@@ -7,10 +7,14 @@ class Shader {
       RE::BSGeometry* geom, const ShapeRef& shapeRef,
       std::function<bool(RE::BSEffectShaderProperty*, const ShaderData&)>
           effectFunc);
+
   static bool applyFade(RE::BSEffectShaderProperty* effectShader,
-                        float fadePercent, float maxAlpha, float minAlpha);
+                        float fadePercent, float maxAlpha, float minAlpha,
+                        float lerpFactor);
+  static bool castRay(RE::BSTriShape* shape, RE::NiPoint3 rayOrig,
+                      RE::NiPoint3 rayDir, float& outDistance);
   static void applyEffects(FogManager* fogManager, RE::PlayerCharacter* player,
-                           const FogRef& fogRef);
+                           FogRef& fogRef);
 };
 
 }  // namespace NullMod

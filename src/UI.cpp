@@ -39,20 +39,15 @@ void UI::Render_Settings() {
                      "The maximum alpha value used when it can not be "
                      "automatically determined.");
 
-  ImGui::SliderFloat("Invisible Distance", &fogManager->invisibleDistance, 20,
-                     200);
-  ImGui::TextColored(ImGui::ImVec4(1, 1, 1, 0.5f),
-                     "Distance at which fog will be fully transparent.");
+  ImGui::SliderFloat("Fade Distance", &fogManager->fadeDistance, 0.0f, 100.0f);
+  ImGui::TextColored(
+      ImGui::ImVec4(1, 1, 1, 0.5f),
+      "Distance from the mesh edge at which fog begins fading out.");
 
-  ImGui::SliderFloat("Visible Distance", &fogManager->visibleDistance, 100,
-                     800);
-  ImGui::TextColored(ImGui::ImVec4(1, 1, 1, 0.5f),
-                     "Distance at which fog will be it's maximum opacity.");
-  fogManager->minAlpha =
-      std::min(fogManager->minAlpha, fogManager->fallbackAlpha);
-
-  fogManager->invisibleDistance = std::min(fogManager->invisibleDistance,
-                                           fogManager->visibleDistance - 1.0f);
+  ImGui::SliderFloat("Fade Responsiveness", &fogManager->lerpFactor, 0.1f, 1);
+  ImGui::TextColored(
+      ImGui::ImVec4(1, 1, 1, 0.5f),
+      "Linear interpolation factor applied to the fade. 0.1 = slow fade, 1.0 = fast");
 }
 
 void UI::Render_Debug() {
@@ -64,6 +59,7 @@ void UI::Render_Debug() {
     auto ref = handle.get();
     if (!ref) continue;
     ImGui::Text("RefID: %08X", ref->GetFormID());
+    ImGui::Text("Ray: %s", fogRef.rayHit ? "Hit" : "Miss");
     for (int i = 0; i < fogRef.shapes.size(); i++) {
       const auto& shape = fogRef.shapes[i];
       for (auto& shader : shape) {

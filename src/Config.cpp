@@ -105,9 +105,9 @@ void Config::Initialize(string path) {
     log::info("Config loaded successfully");
     _configPath = configPath;
   } catch (const json::parse_error& e) {
-    log::error("Failed to parse splash.json: {}", e.what());
+    log::error("Failed to parse {}: {}", configPath.string(), e.what());
   } catch (const exception& e) {
-    log::error("Unexpected error parsing splash.json: {}", e.what());
+    log::error("Unexpected error parsing {}: {}", configPath.string(), e.what());
   }
 }
 

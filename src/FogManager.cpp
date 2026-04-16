@@ -9,20 +9,16 @@ bool isFog(RE::TESBoundObject* baseObject) {
 
   auto stat = baseObject->As<RE::TESObjectSTAT>();
   if (!stat) return false;
-
   const char* modelPath = stat->model.c_str();
   if (!modelPath) return false;
-
-  return std::regex_search(modelPath, regexpr);
+  bool result = std::regex_search(modelPath, regexpr);
+  return result;
 }
 
 void FogManager::Serialize(json& j) {
-  j = nlohmann::json{
-      {"minimumAlpha", minAlpha},
-      {"fallbackAlpha", fallbackAlpha}, 
-      {"visibleDistance", visibleDistance}, 
-      {"invisibleDistance", invisibleDistance}
-  };
+  j = nlohmann::json{{"minimumAlpha", minAlpha},
+                     {"fallbackAlpha", fallbackAlpha},
+                     {"fadeDistance", fadeDistance}};
 }
 
 bool FogManager::CellIsTracked(RE::FormID cellID) {
@@ -50,13 +46,16 @@ std::vector<ShapeRef> FogManager::GetShadersForRef(RE::TESObjectREFR* ref) {
     auto& runtimeData = triShape->GetGeometryRuntimeData();
     for (int i = 0; i < RE::BSGeometry::States::kTotal; i++) {
       auto prop = runtimeData.properties[i].get();
-      auto effectShader = prop ? netimmerse_cast<RE::BSEffectShaderProperty*>(prop) : nullptr;
+      auto effectShader =
+          prop ? netimmerse_cast<RE::BSEffectShaderProperty*>(prop) : nullptr;
       if (effectShader) {
         auto matAlpha = effectShader->QMaterialAlpha();
         if (matAlpha >= 1.0) matAlpha = fallbackAlpha;
         matAlpha = std::max(matAlpha, minAlpha);
-        log::info("Creating ShaderData: i={:d} matAlpha={:1.2f}, minAlpha={:1.2f}", i, matAlpha, minAlpha);
-        ShaderData shaderData{i, matAlpha, false};
+        log::info(
+            "Creating ShaderData: i={:d} matAlpha={:1.2f}, minAlpha={:1.2f}", i,
+            matAlpha, minAlpha);
+        ShaderData shaderData{i, matAlpha};
         shapeRef.push_back(std::move(shaderData));
       }
     }
@@ -75,18 +74,16 @@ void FogManager::TrackRefDeferred(RE::TESObjectREFR* ref, int attempts) {
 
   auto shaders = GetShadersForRef(ref);
   if (shaders.empty()) {
-    SKSE::GetTaskInterface()->AddTask([this, ref, attempts]() { 
-       TrackRefDeferred(ref, attempts + 1);
-    });
-
+    SKSE::GetTaskInterface()->AddTask(
+        [this, ref, attempts]() { TrackRefDeferred(ref, attempts + 1); });
     return;
   }
-
 
   auto baseObject = ref->GetBaseObject();
   auto stat = baseObject->As<RE::TESObjectSTAT>();
   const char* modelPath = stat->model.c_str();
-  log::info("Tracking: FormID={}, RefID={}, Path={}", baseObject->formID, ref->formID, modelPath);
+  log::info("Tracking: FormID={}, RefID={}, Path={}", baseObject->formID,
+            ref->formID, modelPath);
 
   std::lock_guard<std::mutex> lock(trackedRefsLock);
   FogRef fogRef = {ref->GetHandle(), shaders};
@@ -95,7 +92,7 @@ void FogManager::TrackRefDeferred(RE::TESObjectREFR* ref, int attempts) {
 
 void FogManager::CleanupRefs() {
   std::lock_guard<std::mutex> lock(trackedRefsLock);
-  for (const auto& [handle, shapes] : trackedRefs) {
+  for (const auto& [handle, shapes, _] : trackedRefs) {
     auto ref = handle.get();
     if (!ref) continue;
 
@@ -103,7 +100,8 @@ void FogManager::CleanupRefs() {
     if (!baseObject) continue;
     auto stat = baseObject->As<RE::TESObjectSTAT>();
     const char* modelPath = stat->model.c_str();
-    log::info("Untracking: FormID={}, RefID={}, Path={}", baseObject->formID, ref->formID, modelPath);
+    log::info("Untracking: FormID={}, RefID={}, Path={}", baseObject->formID,
+              ref->formID, modelPath);
   }
 
   trackedRefs.clear();
@@ -112,10 +110,10 @@ void FogManager::CleanupRefs() {
 void FogManager::ProcessCell(RE::TESObjectCELL* cell) {
   auto player = RE::PlayerCharacter::GetSingleton();
   CleanupRefs();
-  cell->ForEachReference([&](RE::TESObjectREFR& ref) -> RE::BSContainer::ForEachResult {
+  cell->ForEachReference(
+      [&](RE::TESObjectREFR& ref) -> RE::BSContainer::ForEachResult {
     auto baseObject = ref.GetBaseObject();
     if (!baseObject) return RE::BSContainer::ForEachResult::kContinue;
-
     if (isFog(baseObject)) {
       auto stat = baseObject->As<RE::TESObjectSTAT>();
       const char* modelPath = stat->model.c_str();
@@ -126,11 +124,13 @@ void FogManager::ProcessCell(RE::TESObjectCELL* cell) {
   });
 }
 
-RE::BSEventNotifyControl FogManager::ProcessEvent(const RE::BGSActorCellEvent* event,
-                                                  RE::BSTEventSource<RE::BGSActorCellEvent>*) {
+RE::BSEventNotifyControl FogManager::ProcessEvent(
+    const RE::BGSActorCellEvent* event,
+    RE::BSTEventSource<RE::BGSActorCellEvent>*) {
   auto player = RE::PlayerCharacter::GetSingleton();
-  if (event->actor != player->GetHandle()) return RE::BSEventNotifyControl::kContinue;
-  
+  if (event->actor != player->GetHandle())
+    return RE::BSEventNotifyControl::kContinue;
+
   if (event->flags == RE::BGSActorCellEvent::CellFlag::kLeave) {
     CleanupRefs();
   } else if (event->flags == RE::BGSActorCellEvent::CellFlag::kEnter) {
@@ -142,16 +142,18 @@ RE::BSEventNotifyControl FogManager::ProcessEvent(const RE::BGSActorCellEvent* e
   return RE::BSEventNotifyControl::kContinue;
 }
 
-RE::BSEventNotifyControl FogManager::ProcessEvent(const RE::TESLoadGameEvent* event,
-                                                  RE::BSTEventSource<RE::TESLoadGameEvent>*) {
+RE::BSEventNotifyControl FogManager::ProcessEvent(
+    const RE::TESLoadGameEvent* event,
+    RE::BSTEventSource<RE::TESLoadGameEvent>*) {
   auto player = RE::PlayerCharacter::GetSingleton();
   auto playerHolder = player->AsBGSActorCellEventSource();
   playerHolder->AddEventSink<RE::BGSActorCellEvent>(this);
   return RE::BSEventNotifyControl::kContinue;
 }
 
-RE::BSEventNotifyControl FogManager::ProcessEvent(const RE::TESCellFullyLoadedEvent* event,
-                                                  RE::BSTEventSource<RE::TESCellFullyLoadedEvent>*) {
+RE::BSEventNotifyControl FogManager::ProcessEvent(
+    const RE::TESCellFullyLoadedEvent* event,
+    RE::BSTEventSource<RE::TESCellFullyLoadedEvent>*) {
   RE::TESObjectCELL* cell = event->cell;
   if (!cell->IsInteriorCell()) return RE::BSEventNotifyControl::kContinue;
   if (!CellIsTracked(cell->formID)) ProcessCell(cell);
@@ -164,9 +166,8 @@ void FogManager::Init() {
 
   minAlpha = configManager->get<float>("minimumAlpha", 0.0);
   fallbackAlpha = configManager->get<float>("fallbackAlpha", 0.36);
-  invisibleDistance = configManager->get<float>("invisibleDistance", 200.f);
-  visibleDistance = configManager->get<float>("visibleDistance", 400.f);
-
+  fadeDistance = configManager->get<float>("fadeDistance", 150.f);
+  lerpFactor = configManager->get<float>("lerpFactor", 0.1f);
   log::info("Initialised Config");
 
   auto scriptEventHolder = RE::ScriptEventSourceHolder::GetSingleton();

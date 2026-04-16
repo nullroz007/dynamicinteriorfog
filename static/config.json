@@ -1,6 +1,6 @@
 {
   "minimumAlpha":  0.0,
   "fallbackAlpha": 0.4,
-  "invisibleDistance": 200.0,
-  "visibleDistance": 400.0
+  "fadeDistance": 5.0,
+  "lerpFactor":  0.1
 }
