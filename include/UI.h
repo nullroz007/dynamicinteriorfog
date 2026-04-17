@@ -1,7 +1,7 @@
 #include <SKSEMenuFramework.h>
 namespace NullMod {
 class UI {
- public:
+public:
   static UI* GetSingleton() {
     static UI ui;
     return &ui;
@@ -10,8 +10,10 @@ class UI {
   void Init();
   static void __stdcall OnEvent(SKSEMenuFramework::Model::EventType);
   static void __stdcall Render_Settings();
+  static void __stdcall Render_DebugRays();
   static void __stdcall Render_Debug();
- private:
+
+private:
   static SKSEMenuFramework::Model::Event* eventHandler;
 };
-}  // namespace NullMod
+} // namespace NullMod

@@ -8,8 +8,8 @@ void Hooks::Install() {
   auto& trampoline = SKSE::GetTrampoline();
   trampoline.create(14);
   REL::Relocation<uintptr_t> OnUpdate_Target{RELOCATION_ID(35565, 36564)};
-  _OnUpdate = trampoline.write_call<5>(
-      OnUpdate_Target.address() + REL::Relocate(0x748, 0xC26), Hooks::OnUpdate);
+  _OnUpdate = trampoline.write_call<5>(OnUpdate_Target.address() + REL::Relocate(0x748, 0xC26),
+    Hooks::OnUpdate);
   log::info("Installed Hooks");
 }
 
@@ -27,4 +27,4 @@ void Hooks::OnUpdate() {
     Shader::applyEffects(fogManager, player, fogRef);
   }
 }
-}  // namespace NullMod
+} // namespace NullMod
