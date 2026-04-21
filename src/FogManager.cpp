@@ -8,7 +8,7 @@ bool isFog(RE::TESBoundObject* baseObject) {
   auto stat = baseObject->As<RE::TESObjectSTAT>();
   if (!stat) return false;
 
-  for (auto effectPrefix : VALID_EFFECT_PREFIXES) {
+  for (const auto& effectPrefix : VALID_EFFECT_PREFIXES) {
     if (stat->model.contains(string_view(effectPrefix))) return true;
   }
 
@@ -22,42 +22,40 @@ void FogManager::Serialize(json& j) {
 
 bool FogManager::CellIsTracked(RE::FormID cellID) {
   std::lock_guard<std::mutex> lock(trackedRefsLock);
-  for (auto fogRef : trackedRefs) {
+  for (const auto& fogRef : trackedRefs) {
     auto ref = fogRef.handle.get();
-    if (!ref) return false;
+    if (!ref) continue;
     if (ref->GetParentCell()->formID == cellID) return true;
   }
 
   return false;
 }
 
-std::vector<ShapeRef> FogManager::GetShadersForRef(RE::TESObjectREFR* ref) {
-  std::vector<ShapeRef> results;
+ShapeHashMap FogManager::GetShapesForRef(RE::TESObjectREFR* ref) {
+  ShapeHashMap results;
   auto container = ref ? ref->Get3D() : nullptr;
-  auto rootNode = container ? container->AsNode() : nullptr;
-
-  if (!rootNode) return results;
-  for (auto child : rootNode->GetChildren()) {
-    auto triShape = child ? child->AsTriShape() : nullptr;
-    if (!triShape) continue;
+ 
+  RE::BSVisit::TraverseScenegraphGeometries(container, [&](RE::BSGeometry* geom) -> RE::BSVisit::BSVisitControl {
+    auto triShape = geom->AsTriShape();
+    if (!triShape) return RE::BSVisit::BSVisitControl::kContinue;
 
     ShapeRef shapeRef;
     auto& runtimeData = triShape->GetGeometryRuntimeData();
     for (int i = 0; i < RE::BSGeometry::States::kTotal; i++) {
       auto prop = runtimeData.properties[i].get();
       auto effectShader = prop ? netimmerse_cast<RE::BSEffectShaderProperty*>(prop) : nullptr;
-      if (effectShader) {
-        auto matAlpha = effectShader->QMaterialAlpha();
-        if (matAlpha >= 1.0) matAlpha = fallbackAlpha;
-        matAlpha = std::max(matAlpha, minAlpha);
-        log::info("Creating ShaderData: i={:d} matAlpha={:1.2f}, minAlpha={:1.2f}", i, matAlpha, minAlpha);
-        ShaderData shaderData{i, matAlpha};
-        shapeRef.push_back(std::move(shaderData));
-      }
+      if (!effectShader) continue;
+
+      auto matAlpha = effectShader->QMaterialAlpha();
+      if (matAlpha >= 1.0) matAlpha = fallbackAlpha;
+      matAlpha = std::max(matAlpha, minAlpha);
+      ShaderData shaderData{i, matAlpha};
+      shapeRef.push_back(std::move(shaderData));
     }
 
-    results.push_back(std::move(shapeRef));
-  }
+    results[geom->name] = std::move(shapeRef);
+    return RE::BSVisit::BSVisitControl::kContinue;
+  });
 
   return results;
 }
@@ -68,50 +66,27 @@ void FogManager::TrackRefDeferred(RE::TESObjectREFR* ref, int attempts) {
     return;
   }
 
-  auto shaders = GetShadersForRef(ref);
-  if (shaders.empty()) {
+  auto shapes = GetShapesForRef(ref);
+  if (shapes.empty()) {
     SKSE::GetTaskInterface()->AddTask([this, ref, attempts]() { TrackRefDeferred(ref, attempts + 1); });
     return;
   }
 
-  auto baseObject = ref->GetBaseObject();
-  auto stat = baseObject->As<RE::TESObjectSTAT>();
-  const char* modelPath = stat->model.c_str();
-  log::info("Tracking: FormID={}, RefID={}, Path={}", baseObject->formID, ref->formID, modelPath);
-
   std::lock_guard<std::mutex> lock(trackedRefsLock);
-  FogRef fogRef = {ref->GetHandle(), shaders};
-  trackedRefs.push_back(fogRef);
+  trackedRefs.push_back({ref->GetHandle(), std::move(shapes)});
 }
 
 void FogManager::CleanupRefs() {
   std::lock_guard<std::mutex> lock(trackedRefsLock);
-  for (const auto& [handle, shapes, hit, rays] : trackedRefs) {
-    auto ref = handle.get();
-    if (!ref) continue;
-
-    auto baseObject = ref->GetBaseObject();
-    if (!baseObject) continue;
-    auto stat = baseObject->As<RE::TESObjectSTAT>();
-    const char* modelPath = stat->model.c_str();
-    log::info("Untracking: FormID={}, RefID={}, Path={}", baseObject->formID, ref->formID, modelPath);
-  }
-
   trackedRefs.clear();
 }
 
 void FogManager::ProcessCell(RE::TESObjectCELL* cell) {
-  auto player = RE::PlayerCharacter::GetSingleton();
   CleanupRefs();
   cell->ForEachReference([&](RE::TESObjectREFR& ref) -> RE::BSContainer::ForEachResult {
     auto baseObject = ref.GetBaseObject();
     if (!baseObject) return RE::BSContainer::ForEachResult::kContinue;
-    if (isFog(baseObject)) {
-      auto stat = baseObject->As<RE::TESObjectSTAT>();
-      const char* modelPath = stat->model.c_str();
-      TrackRefDeferred(&ref, 0);
-    }
-
+    if (isFog(baseObject)) TrackRefDeferred(&ref, 0);
     return RE::BSContainer::ForEachResult::kContinue;
   });
 }

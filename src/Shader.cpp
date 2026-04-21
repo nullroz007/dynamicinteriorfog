@@ -4,12 +4,11 @@
 
 using namespace SKSE;
 namespace NullMod {
-bool Shader::applyFade(RE::BSEffectShaderProperty* effectShader, float fadePercent, float maxAlpha,
-  float minAlpha, float lerpFactor) {
-  minAlpha = std::min(minAlpha, maxAlpha);
+bool Shader::applyFade(FogManager* fogManager, RE::BSEffectShaderProperty* effectShader, float fadePercent, float maxAlpha) {
+  float minAlpha = std::min(fogManager->minAlpha, maxAlpha);
   float currentAlpha = effectShader->QMaterialAlpha();
   float targetAlpha = std::clamp(fadePercent * maxAlpha, minAlpha, maxAlpha);
-  float smoothedAlpha = std::lerp(currentAlpha, targetAlpha, lerpFactor * 0.1f);
+  float smoothedAlpha = std::lerp(currentAlpha, targetAlpha, fogManager->lerpFactor * 0.1f);
 
   if (std::abs(currentAlpha - targetAlpha) > alphaEpsilon) {
     effectShader->flags.set(RE::BSEffectShaderProperty::EShaderPropertyFlag::kVertexAlpha);
@@ -18,21 +17,6 @@ bool Shader::applyFade(RE::BSEffectShaderProperty* effectShader, float fadePerce
   }
 
   return false;
-}
-
-bool Shader::applyEffect(RE::BSGeometry* geom, const ShapeRef& shapeRef,
-  std::function<bool(RE::BSEffectShaderProperty*, const ShaderData&)> effectFunc) {
-  auto& runtimeData = geom->GetGeometryRuntimeData();
-
-  bool needsUpdate = false;
-  for (const auto& shader : shapeRef) {
-    auto prop = runtimeData.properties[shader.shaderIndex].get();
-    if (const auto& effectShader = netimmerse_cast<RE::BSEffectShaderProperty*>(prop)) {
-      needsUpdate |= effectFunc(effectShader, shader);
-    }
-  }
-
-  return needsUpdate;
 }
 
 void Shader::applyEffects(FogManager* fogManager, RE::PlayerCharacter* player, FogRef& fogRef) {
@@ -59,32 +43,41 @@ void Shader::applyEffects(FogManager* fogManager, RE::PlayerCharacter* player, F
 
   bool foundHit = false;
   if (auto nodes = container->AsNode()) {
-    int shapeIndex = 0;
-    for (auto child : nodes->GetChildren()) {
-      if (!child) continue;
-      if (shapeIndex >= fogRef.shapes.size()) break;
-      
-      if (auto triShape = child->AsTriShape()) {
-        FogRay ray{};
-        float fadePercent = RayUtils::calculateFadeFromRay(fogManager, triShape, fogCenter, posPlayer, dirRay,
-          edgeDist, ray);
+    RE::BSVisit::TraverseScenegraphGeometries(container,
+      [&](RE::BSGeometry* geom) -> RE::BSVisit::BSVisitControl {
+        bool needsUpdate = false;
+
+        auto triShape = geom->AsTriShape();
+        auto& runtimeData = geom->GetGeometryRuntimeData();
+        if (!triShape) return RE::BSVisit::BSVisitControl::kContinue;
         
+        auto it = fogRef.shapes.find(triShape->name.c_str());
+        if (it == fogRef.shapes.end()) return RE::BSVisit::BSVisitControl::kContinue;
+        const ShapeRef& shapeRef = it->second;
+
+        FogRay ray{};
+        float fadePercent = RayUtils::calculateFadeFromRay(fogManager, &fogRef, triShape, fogCenter,
+          posPlayer, dirRay, edgeDist, ray);
+
         if (ray.hit) foundHit = true;
         fogRef.rays.push_back(std::move(ray));
 
-        if (Shader::applyEffect(triShape, fogRef.shapes[shapeIndex],
-              [&](RE::BSEffectShaderProperty* effectShader, const ShaderData& shader) {
-                return Shader::applyFade(effectShader, fadePercent, shader.alpha, fogManager->minAlpha,
-                  fogManager->lerpFactor);
-              })) {
+        for (const auto& shader : shapeRef) {
+          auto prop = runtimeData.properties[shader.shaderIndex].get();
+          auto effectShader = netimmerse_cast<RE::BSEffectShaderProperty*>(prop);
+          if (!effectShader) continue;
+
+          needsUpdate |= Shader::applyFade(fogManager, effectShader, fadePercent, shader.alpha);
+        }
+
+        if (needsUpdate) {
           RE::NiUpdateData ctx;
           triShape->SetMaterialNeedsUpdate(true);
           triShape->Update(ctx);
         }
 
-        shapeIndex++;
-      }
-    }
+        return RE::BSVisit::BSVisitControl::kContinue;
+    });
   }
 
   fogRef.rayHit = foundHit;

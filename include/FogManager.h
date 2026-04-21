@@ -1,6 +1,7 @@
 #pragma once
 #include <Config.h>
 namespace NullMod {
+
 struct FogRay {
   RE::NiPoint3 origin;
   RE::NiPoint3 end;
@@ -12,11 +13,20 @@ struct ShaderData {
   float alpha;
 };
 
+struct BSFixedStringHash {
+  size_t operator()(const RE::BSFixedString& s) const { return std::hash<const void*>{}(s.data()); }
+};
+
+
 using ShapeRef = std::vector<ShaderData>;
+using ShapeHashMap = std::unordered_map<RE::BSFixedString, ShapeRef, BSFixedStringHash>;
+
 struct FogRef {
   RE::ObjectRefHandle handle;
-  std::vector<ShapeRef> shapes;
+  ShapeHashMap shapes;
   std::vector<FogRay> rays;
+
+  float edgeRayDiff; 
   bool rayHit;
 };
 
@@ -64,6 +74,6 @@ private:
   // Main functions
   void TrackRef(RE::TESObjectREFR* ref);
   void TrackRefDeferred(RE::TESObjectREFR* ref, int attempts);
-  std::vector<ShapeRef> GetShadersForRef(RE::TESObjectREFR* ref);
+  ShapeHashMap GetShapesForRef(RE::TESObjectREFR* ref);
 };
 } // namespace NullMod

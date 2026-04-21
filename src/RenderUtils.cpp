@@ -20,7 +20,6 @@ bool RenderUtils::computePixelCoordinates(RE::NiPoint3 pWorld, RE::PlayerCamera*
   RE::NiTransform worldToCamera = cameraRoot->world.Invert();
   RE::NiPoint3 pCamera = worldToCamera * pWorld;
 
-  // get the coordinates of the point on the canvas, using perspective projection
   ImGui::ImVec2 pScreen{};
   if (pCamera.y <= 0) return false;
 
@@ -28,12 +27,10 @@ bool RenderUtils::computePixelCoordinates(RE::NiPoint3 pWorld, RE::PlayerCamera*
   pScreen.x = pCamera.x * perspective;
   pScreen.y = pCamera.z * perspective;
 
-  // point is offscreen if the abs values of x- or y- are larger than the canvas width/height
   float halfWidth = canvasWidth * 0.5f;
   float halfHeight = canvasHeight * 0.5f;
   if (std::abs(pScreen.x) > halfWidth || std::abs(pScreen.y) > halfHeight) return false;
 
-  // normalise coords to range [0,1]
   ImGui::ImVec2 pNDC{};
   pNDC.x = (pScreen.x + canvasWidth / 2) / canvasWidth;
   pNDC.y = (pScreen.y + canvasHeight / 2) / canvasHeight;
@@ -113,15 +110,21 @@ bool RayUtils::castRay(RE::BSTriShape* shape, RE::NiPoint3 rayOrig, RE::NiPoint3
   return false;
 }
 
-float RayUtils::calculateFadeFromRay(FogManager* fogManager, RE::BSTriShape* triShape, RE::NiPoint3 target,
+float RayUtils::calculateFadeFromRay(FogManager* fogManager, FogRef* fogRef, RE::BSTriShape* triShape, RE::NiPoint3 target,
   RE::NiPoint3 rayOrig, RE::NiPoint3 rayDir, float edgeDist, FogRay& rayOut) {
   float fadePercent = 1.0f;
   float rayDist = 0.0f;
   if (edgeDist <= 0.0f) return 0.0f;
 
   rayOut.origin = rayOrig;
+  
   bool hit = castRay(triShape, rayOrig, rayDir, rayDist);
-  float finalDist = hit ? rayDist : edgeDist;
+  float diff = std::abs(rayDist - edgeDist);
+  float newDiff = std::abs(edgeDist - rayDist);
+
+  if (newDiff > fogRef->edgeRayDiff) fogRef->edgeRayDiff = newDiff;
+
+  float finalDist = hit ? rayDist : edgeDist - fogRef->edgeRayDiff;
   if (finalDist < fogManager->fadeDistance) {
     fadePercent = finalDist / fogManager->fadeDistance;
   } else {
@@ -130,5 +133,6 @@ float RayUtils::calculateFadeFromRay(FogManager* fogManager, RE::BSTriShape* tri
 
   rayOut.end = rayOrig + rayDir * (hit ? rayDist : edgeDist);
   rayOut.hit = hit;
+
   return fadePercent;
 }
